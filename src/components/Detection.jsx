@@ -5,7 +5,6 @@ const startSoundUrl = "https://www.soundjay.com/buttons/sounds/button-3.mp3";
 export default function Detection({ notify }) {
   const [method, setMethod] = useState("");
   const [contact, setContact] = useState("");
-  const [countryCode, setCountryCode] = useState("");
   const [active, setActive] = useState(false);
   const startSoundRef = useRef(null);
 
@@ -14,7 +13,6 @@ export default function Detection({ notify }) {
     const formData = new FormData();
     formData.append("method", method);
     formData.append("contact", contact);
-    formData.append("country_code", countryCode);
 
     try {
       const res = await fetch("/start_detection", { method: "POST", body: formData });
@@ -65,36 +63,31 @@ export default function Detection({ notify }) {
                 className="input-field w-full p-3 rounded-lg appearance-none"
               >
                 <option value="">Select notification method</option>
-                <option value="WhatsApp">WhatsApp Message</option>
                 <option value="Email">Email Notification</option>
+                <option value="Telegram">Telegram Bot</option>
               </select>
               <i className="fas fa-chevron-down absolute right-3 top-3.5 text-slate-400 pointer-events-none"></i>
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-2 text-slate-700">Contact Information</label>
-            <input
-              type="text"
-              required
-              value={contact}
-              onChange={(e) => setContact(e.target.value)}
-              placeholder="Enter phone number or email"
-              className="input-field w-full p-3 rounded-lg"
-            />
-          </div>
-
-          {method === "WhatsApp" && (
+          {method === "Email" && (
             <div>
-              <label className="block text-sm font-medium mb-2 text-slate-700">Country Code</label>
+              <label className="block text-sm font-medium mb-2 text-slate-700">Email Address</label>
               <input
-                type="text"
-                value={countryCode}
-                onChange={(e) => setCountryCode(e.target.value)}
-                placeholder="+1"
+                type="email"
+                required
+                value={contact}
+                onChange={(e) => setContact(e.target.value)}
+                placeholder="you@example.com"
                 className="input-field w-full p-3 rounded-lg"
               />
             </div>
+          )}
+
+          {method === "Telegram" && (
+            <p className="text-sm text-slate-600">
+              Alerts will be sent to the Telegram chat configured on the server.
+            </p>
           )}
 
           <div className="pt-4">
