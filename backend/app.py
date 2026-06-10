@@ -10,6 +10,7 @@ from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 import logging
 import os
+import time
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -20,6 +21,11 @@ app = Flask(__name__)
 CORS(app, origins=["https://lucidsight.netlify.app"], supports_credentials=True)
 detection_active = False
 state_lock = threading.Lock()
+ALERT_COOLDOWN_SECONDS = max(
+    1,
+    int(os.getenv('ALERT_COOLDOWN_SECONDS', '20')),
+)
+DETECTION_RESET_SECONDS = 2
 
 logging.basicConfig(level=logging.INFO)
 
@@ -58,6 +64,10 @@ def detect_human(method, contact):
             detection_active = False
         return
 
+    last_alert_at = 0.0
+    last_human_seen_at = 0.0
+    human_present = False
+
     try:
         while detection_active:
             ret, frame = cap.read()
@@ -67,29 +77,42 @@ def detect_human(method, contact):
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
+            now = time.monotonic()
 
             if len(faces) > 0:
-                logging.info("Human detected!")
+                should_alert = (
+                    not human_present
+                    or now - last_alert_at >= ALERT_COOLDOWN_SECONDS
+                )
+                human_present = True
+                last_human_seen_at = now
 
-                image_path = BACKEND_DIR / "static" / "intruder.jpg"
-                cv2.imwrite(str(image_path), frame)
+                if should_alert:
+                    logging.info("Human detected!")
 
-                location = get_location()
-                logging.info("Detection location: %s", location)
+                    image_path = BACKEND_DIR / "static" / "intruder.jpg"
+                    cv2.imwrite(str(image_path), frame)
 
-                if method == 'Email':
-                    if send_alert_via_email(contact, location, image_path):
-                        logging.info("Alert sent successfully.")
+                    location = get_location()
+                    logging.info("Detection location: %s", location)
+
+                    if method == 'Email':
+                        if send_alert_via_email(contact, location, image_path):
+                            logging.info("Email alert sent successfully.")
+                        else:
+                            logging.error("Email alert could not be sent.")
+                    elif method == 'Telegram':
+                        if send_alert_via_telegram(contact, location, image_path):
+                            logging.info("Telegram alert sent successfully.")
+                        else:
+                            logging.error("Telegram alert could not be sent.")
                     else:
-                        logging.error("Alert could not be sent.")
-                elif method == 'Telegram':
-                    if send_alert_via_telegram(location, image_path):
-                        logging.info("Telegram alert sent successfully.")
-                    else:
-                        logging.error("Telegram alert could not be sent.")
-                else:
-                    logging.error("Unsupported alert method: %s", method)
-                break
+                        logging.error("Unsupported alert method: %s", method)
+
+                    last_alert_at = time.monotonic()
+            elif human_present and now - last_human_seen_at >= DETECTION_RESET_SECONDS:
+                human_present = False
+                logging.info("Detection reset; ready for the next human.")
 
             # Only show the camera feed if not in a headless environment
             if not is_headless():
@@ -108,9 +131,11 @@ def detect_human(method, contact):
 def send_alert_via_email(contact, location, image_path):
     message = f"🚨 Alert: Human detected at {location} on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
+    sender = os.getenv('EMAIL_FROM', 'sightlucid@gmail.com').strip()
+
     msg = MIMEMultipart()
     msg['Subject'] = 'LucidSight: Intruder Alert'
-    msg['From'] = 'sightlucid@gmail.com'
+    msg['From'] = sender
     msg['To'] = contact
 
     msg.attach(MIMEText(message))
@@ -124,26 +149,30 @@ def send_alert_via_email(contact, location, image_path):
     if not password:
         logging.error("EMAILPWD environment variable is not set.")
         return False
+    password = ''.join(password.split())
 
     try:
         with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as server:
             server.starttls()
-            server.login('sightlucid@gmail.com', password)
+            server.login(sender, password)
             server.sendmail(msg['From'], msg['To'], msg.as_string())
         logging.info(f"Email alert sent to {contact}")
         return True
+    except smtplib.SMTPAuthenticationError:
+        logging.error(
+            "Gmail authentication failed. EMAIL_FROM must match the Google "
+            "account that created EMAILPWD, and EMAILPWD must be an App Password."
+        )
+        return False
     except Exception as e:
         logging.error(f"Failed to send email: {e}")
         return False
 
-def send_alert_via_telegram(location, image_path):
+def send_alert_via_telegram(chat_id, location, image_path):
     token = os.getenv('TELEGRAM_BOT_TOKEN')
-    chat_id = os.getenv('TELEGRAM_CHAT_ID')
 
-    if not token or not chat_id:
-        logging.error(
-            "TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables must be set."
-        )
+    if not token:
+        logging.error("TELEGRAM_BOT_TOKEN environment variable is not set.")
         return False
 
     caption = (
@@ -198,8 +227,13 @@ def start_detection():
 
     if method not in {'Email', 'Telegram'}:
         return jsonify({"error": "Select a supported alert method"}), 400
-    if method == 'Email' and not contact:
-        return jsonify({"error": "Email address is required"}), 400
+    if not contact:
+        contact_name = "Email address" if method == 'Email' else "Telegram chat ID"
+        return jsonify({"error": f"{contact_name} is required"}), 400
+    if method == 'Telegram':
+        normalized_chat_id = contact.removeprefix('-')
+        if not normalized_chat_id.isdigit():
+            return jsonify({"error": "Enter a valid numeric Telegram chat ID"}), 400
 
     with state_lock:
         if detection_active:

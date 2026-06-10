@@ -1,3 +1,5 @@
+import secureMonitoringHero from "../assets/secure-monitoring-hero.png";
+
 export default function Hero() {
   return (
     <section className="hero-gradient text-white pt-32 pb-20 px-4 md:px-8">
@@ -14,11 +16,11 @@ export default function Hero() {
             <a href="#how-it-works" className="bg-white/10 hover:bg-white/20 px-6 py-3 rounded-lg font-medium text-center border border-white/20 transition-all">Learn More</a>
           </div>
         </div>
-        <div className="relative">
+        <div className="relative h-72 sm:h-96 md:h-[440px]">
           <img
-            src="https://150085848.v2.pressablecdn.com/wp-content/uploads/2024/03/0324-March-Headers_Feature1-AISmartHome-Thumbnail.jpg"
+            src={secureMonitoringHero}
             alt="Security monitoring"
-            className="rounded-xl shadow-2xl border-4 border-white/20"
+            className="w-full h-full object-cover object-right rounded-xl shadow-2xl border-4 border-white/20"
           />
           <div className="absolute -bottom-6 -right-6 bg-white p-4 rounded-xl shadow-lg">
             <div className="flex items-center">

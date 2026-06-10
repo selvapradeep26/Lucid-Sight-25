@@ -17,12 +17,12 @@ export default function Detection({ notify }) {
     try {
       const res = await fetch("/start_detection", { method: "POST", body: formData });
       const data = await res.json();
-      if (data.status) {
+      if (res.ok && data.status) {
         setActive(true);
         startSoundRef.current?.play().catch(() => {});
         notify("Detection started successfully!", "success");
       } else {
-        notify("Failed to start detection. Please try again.", "error");
+        notify(data.error || "Failed to start detection. Please try again.", "error");
       }
     } catch {
       notify("Network error. Please check your connection.", "error");
@@ -33,11 +33,11 @@ export default function Detection({ notify }) {
     try {
       const res = await fetch("/stop_detection", { method: "POST" });
       const data = await res.json();
-      if (data.status) {
+      if (res.ok && data.status) {
         setActive(false);
         notify("Detection stopped successfully!", "success");
       } else {
-        notify("Failed to stop detection.", "error");
+        notify(data.error || "Failed to stop detection.", "error");
       }
     } catch {
       notify("Network error. Please check your connection.", "error");
@@ -85,9 +85,24 @@ export default function Detection({ notify }) {
           )}
 
           {method === "Telegram" && (
-            <p className="text-sm text-slate-600">
-              Alerts will be sent to the Telegram chat configured on the server.
-            </p>
+            <div>
+              <label className="block text-sm font-medium mb-2 text-slate-700">
+                Telegram Chat ID
+              </label>
+              <input
+                type="text"
+                required
+                inputMode="numeric"
+                value={contact}
+                onChange={(e) => setContact(e.target.value.trim())}
+                placeholder="Example: 123456789"
+                className="input-field w-full p-3 rounded-lg"
+              />
+              <p className="mt-2 text-sm text-slate-600">
+                Open the shared bot in Telegram, tap Start, then enter your own chat ID.
+                Alerts from this session will be sent only to that chat.
+              </p>
+            </div>
           )}
 
           <div className="pt-4">
