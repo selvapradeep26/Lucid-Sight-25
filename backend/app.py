@@ -20,6 +20,7 @@ load_dotenv(BACKEND_DIR.parent / ".env")
 app = Flask(__name__)
 CORS(app, origins=["https://lucidsight.netlify.app"], supports_credentials=True)
 detection_active = False
+detection_thread = None
 state_lock = threading.Lock()
 ALERT_COOLDOWN_SECONDS = max(
     1,
@@ -32,6 +33,31 @@ logging.basicConfig(level=logging.INFO)
 # Function to check if the environment is headless (no display)
 def is_headless():
     return 'DISPLAY' not in os.environ
+
+
+def should_show_camera_preview():
+    """Only open an OpenCV preview when it was explicitly requested."""
+    return os.getenv('SHOW_CAMERA_PREVIEW', 'false').strip().lower() in {
+        '1', 'true', 'yes', 'on'
+    }
+
+
+def open_camera():
+    """Open the configured webcam with a backend supported by this OS."""
+    try:
+        camera_index = int(os.getenv('CAMERA_INDEX', '0'))
+    except ValueError:
+        logging.warning("Invalid CAMERA_INDEX; using camera 0")
+        camera_index = 0
+
+    # DirectShow is Windows-only.  V4L2 is the native Linux camera backend.
+    backend = cv2.CAP_DSHOW if os.name == 'nt' else cv2.CAP_V4L2
+    cap = cv2.VideoCapture(camera_index, backend)
+    if not cap.isOpened() and backend != cv2.CAP_ANY:
+        cap.release()
+        cap = cv2.VideoCapture(camera_index, cv2.CAP_ANY)
+
+    return cap, camera_index
 
 def get_location():
     try:
@@ -54,12 +80,16 @@ def handle_options():
 def detect_human(method, contact):
     global detection_active
 
-    # Use default webcam (0 or cv2.CAP_DSHOW) for webcam input
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    cap, camera_index = open_camera()
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
     if not cap.isOpened():
-        logging.error("Unable to access camera")
+        logging.error(
+            "Unable to access camera %s. On Linux, check /dev/video%s access "
+            "and try CAMERA_INDEX=1 if your webcam is on that device.",
+            camera_index,
+            camera_index,
+        )
         with state_lock:
             detection_active = False
         return
@@ -67,6 +97,7 @@ def detect_human(method, contact):
     last_alert_at = 0.0
     last_human_seen_at = 0.0
     human_present = False
+    show_camera_preview = should_show_camera_preview()
 
     try:
         while detection_active:
@@ -114,17 +145,27 @@ def detect_human(method, contact):
                 human_present = False
                 logging.info("Detection reset; ready for the next human.")
 
-            # Only show the camera feed if not in a headless environment
-            if not is_headless():
-                cv2.imshow('LucidSight - Human Detection', frame)
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    break
+            # Many server OpenCV builds omit GUI support. Preview is opt-in so
+            # a missing HighGUI backend can never stop the detection worker.
+            if show_camera_preview:
+                try:
+                    cv2.imshow('LucidSight - Human Detection', frame)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
+                except cv2.error:
+                    logging.warning(
+                        "Camera preview is unavailable; continuing detection without it."
+                    )
+                    show_camera_preview = False
     except Exception:
         logging.exception("Detection worker failed")
     finally:
         cap.release()
-        if not is_headless():
-            cv2.destroyAllWindows()
+        if show_camera_preview:
+            try:
+                cv2.destroyAllWindows()
+            except cv2.error:
+                pass
         with state_lock:
             detection_active = False
 
@@ -221,7 +262,7 @@ def home():
 
 @app.route('/start_detection', methods=['POST'])
 def start_detection():
-    global detection_active
+    global detection_active, detection_thread
     method = request.form.get('method', '').strip()
     contact = request.form.get('contact', '').strip()
 
@@ -238,13 +279,17 @@ def start_detection():
     with state_lock:
         if detection_active:
             return jsonify({"error": "Detection is already active"}), 409
+        if detection_thread is not None and detection_thread.is_alive():
+            return jsonify({
+                "error": "Previous detection is still stopping. Please wait a moment and try again."
+            }), 409
         detection_active = True
 
-    detection_thread = threading.Thread(
-        target=detect_human,
-        args=(method, contact),
-        daemon=True,
-    )
+        detection_thread = threading.Thread(
+            target=detect_human,
+            args=(method, contact),
+            daemon=True,
+        )
     detection_thread.start()
 
     return jsonify({"status": "Detection Started"})

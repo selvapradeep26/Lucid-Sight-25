@@ -1,0 +1,8 @@
+Flask==3.0.3
+Flask-Cors==4.0.0
+opencv-python-headless==4.11.0.86
+requests==2.32.3
+python-dotenv==1.0.1
+geocoder==1.38.1
+pywhatkit
+gunicorn==23.0.0
