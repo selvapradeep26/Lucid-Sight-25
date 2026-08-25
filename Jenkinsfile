@@ -8,6 +8,13 @@ pipeline{
             }
         }
 
+        stage('Test Docker') {
+            steps {
+                sh 'echo "DOCKER_HOST=$DOCKER_HOST"'
+                sh 'docker info'
+            }
+        }
+
         stage('Build Dock images'){
             steps{
                 sh 'docker compose build'
