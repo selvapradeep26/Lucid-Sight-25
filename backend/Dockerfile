@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 
 COPY requirements-linux.txt .
 
-RUN pip install --no-cache-dir -r requirements-linux.txt
+RUN pip install --no-cache-dir --default-timeout=300 -r requirements-linux.txt
 
 COPY . .
 
