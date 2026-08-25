@@ -1,19 +1,17 @@
-# SightLucid (React Edition)
+# SightLucid — React + Flask
 
-Traditional React (Vite) frontend converted from the original Flask + Jinja
-template. Functionality is preserved: the React app talks to the same Flask
-backend endpoints (`/start_detection`, `/stop_detection`).
+SightLucid uses a **React (Vite) frontend** with a **Flask backend** for real-time YOLOv8 object detection.
 
 ## Project Structure
 
-```
+```text
 sightlucid/
-├── backend/           # Original Flask app (unchanged)
+├── backend/
 │   ├── app.py
 │   ├── detection.py
 │   └── requirements.txt
 ├── src/
-│   ├── components/    # React components (Navbar, Hero, Detection, ...)
+│   ├── components/
 │   ├── App.jsx
 │   ├── main.jsx
 │   └── styles.css
@@ -22,48 +20,94 @@ sightlucid/
 └── package.json
 ```
 
+## Architecture
+
+The browser handles camera access and captures video frames. React sends frames to Flask for YOLOv8 processing, and the detection results are returned to React.
+
+```text
+Browser Camera
+      ↓
+    React
+      ↓
+ POST /process_frame
+      ↓
+    Flask
+      ↓
+   YOLOv8
+      ↓
+ Detection Results
+      ↓
+    React UI
+```
+
+The backend no longer directly accesses the camera or depends on `/dev/video0`.
+
 ## Run
 
-### 1) Start the Flask backend
+### 1. Start Flask
+
 ```bash
 cd backend
 pip install -r requirements.txt
-python app.py        # http://localhost:5000
+python app.py
 ```
 
-### 2) Start the React dev server
+Backend:
+
+```text
+http://localhost:5000
+```
+
+### 2. Start React
+
 ```bash
 npm install
-npm run dev          # http://localhost:3000
+npm run dev
 ```
 
-Vite is configured to proxy `/start_detection` and `/stop_detection` to the
-Flask backend on port 5000, so the React UI behaves identically to the
-original template.
+Frontend:
 
-## Telegram bot access
+```text
+http://localhost:3000
+```
 
-Set `TELEGRAM_BOT_TOKEN` in the project `.env` file. Do not expose this token
-in the React app. Each user must open the bot, tap **Start**, and enter their
-own numeric Telegram chat ID in the detection form. The backend uses that chat
-ID only for the current detection session.
+Vite proxies API requests to the Flask backend.
 
-## Gmail alerts
+## Telegram Bot
 
-Create a Google App Password for the Gmail account used to send alerts, then
-configure the project `.env` file:
+Configure the backend `.env`:
+
+```env
+TELEGRAM_BOT_TOKEN=your_bot_token
+```
+
+Keep the token on the backend. Users provide their own Telegram chat ID through the detection form.
+
+## Gmail Alerts
+
+Configure:
 
 ```env
 EMAIL_FROM=sightlucid@gmail.com
 EMAILPWD=xxxx xxxx xxxx xxxx
 ```
 
-`EMAIL_FROM` must be the same Google account that created the App Password.
-Recipients enter their own email address in the detection form. Never use or
-collect a recipient's Gmail password.
+Use a Google App Password. Never collect recipients' Gmail passwords.
 
-## Production build
+## Production Build
+
 ```bash
-npm run build        # outputs static files to dist/
+npm run build
 ```
-You can serve `dist/` from any static host, or have Flask serve it.
+
+The production frontend is generated in:
+
+```text
+dist/
+```
+
+### Key Change
+
+**Old:** Flask accessed the camera directly.
+
+**New:** React/browser captures frames → Flask processes them → React displays the results.
