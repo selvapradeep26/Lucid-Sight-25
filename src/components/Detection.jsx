@@ -7,6 +7,98 @@ export default function Detection({ notify }) {
   const [contact, setContact] = useState("");
   const [active, setActive] = useState(false);
   const startSoundRef = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const intervalRef = useRef(null);
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false,
+      });
+
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Camera access failed:", error);
+
+      notify("Please allow camera access.", "error");
+
+      return false;
+    }
+  };
+
+  const sendFrame = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    if (!video || !canvas) return;
+    if (video.readyState < 2) return;
+
+    canvas.width = 640;
+    canvas.height = 480;
+
+    const context = canvas.getContext("2d");
+    context.drawImage(video, 0, 0, 640, 480);
+
+    canvas.toBlob(
+      async (blob) => {
+        if (!blob) return;
+
+        const formData = new FormData();
+        formData.append("frame", blob, "frame.jpg");
+
+        try {
+          const res = await fetch("/process_frame", {
+            method: "POST",
+            body: formData,
+          });
+
+          const data = await res.json().catch(() => null);
+
+          if (!res.ok) {
+            if (res.status === 400 && data?.error === "Detection is not active") {
+              stopCameraAndFrames();
+              setActive(false);
+              notify("Detection is inactive on server. Please start detection again.", "error");
+            }
+            return;
+          }
+
+          if (data?.detected) {
+            console.log("Human detected in current frame");
+          }
+        } catch (error) {
+          console.error("Frame upload failed:", error);
+        }
+      },
+      "image/jpeg",
+      0.7
+    );
+  };
+
+  const stopCameraAndFrames = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -19,6 +111,17 @@ export default function Detection({ notify }) {
       const data = await res.json();
       if (res.ok && data.status) {
         setActive(true);
+
+        const cameraStarted = await startCamera();
+
+        if (!cameraStarted) {
+          await fetch("/stop_detection", { method: "POST" });
+          setActive(false);
+          return;
+        }
+
+        intervalRef.current = setInterval(sendFrame, 500);
+
         startSoundRef.current?.play().catch(() => {});
         notify("Detection started successfully!", "success");
       } else {
@@ -34,6 +137,7 @@ export default function Detection({ notify }) {
       const res = await fetch("/stop_detection", { method: "POST" });
       const data = await res.json();
       if (res.ok && data.status) {
+        stopCameraAndFrames();
         setActive(false);
         notify("Detection stopped successfully!", "success");
       } else {
@@ -106,6 +210,16 @@ export default function Detection({ notify }) {
           )}
 
           <div className="pt-4">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className={`w-full rounded-lg mb-6 ${active ? "block" : "hidden"}`}
+            />
+
+            <canvas ref={canvasRef} className="hidden" />
+
             <div className="flex items-center justify-between bg-slate-100 rounded-lg px-4 py-3 mb-6">
               <div className="flex items-center">
                 <span className={`status-indicator ${active ? "status-active" : "status-inactive"}`}></span>

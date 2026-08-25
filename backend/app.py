@@ -5,6 +5,7 @@ import cv2
 import requests
 from datetime import datetime
 import smtplib
+import socket
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
@@ -20,7 +21,11 @@ load_dotenv(BACKEND_DIR.parent / ".env")
 app = Flask(__name__)
 CORS(app, origins=["https://lucidsight.netlify.app"], supports_credentials=True)
 detection_active = False
-detection_thread = None
+detection_method = None
+detection_contact = None
+last_alert_at = 0.0
+last_human_seen_at = 0.0
+human_present = False
 state_lock = threading.Lock()
 ALERT_COOLDOWN_SECONDS = max(
     1,
@@ -29,35 +34,6 @@ ALERT_COOLDOWN_SECONDS = max(
 DETECTION_RESET_SECONDS = 2
 
 logging.basicConfig(level=logging.INFO)
-
-# Function to check if the environment is headless (no display)
-def is_headless():
-    return 'DISPLAY' not in os.environ
-
-
-def should_show_camera_preview():
-    """Only open an OpenCV preview when it was explicitly requested."""
-    return os.getenv('SHOW_CAMERA_PREVIEW', 'false').strip().lower() in {
-        '1', 'true', 'yes', 'on'
-    }
-
-
-def open_camera():
-    """Open the configured webcam with a backend supported by this OS."""
-    try:
-        camera_index = int(os.getenv('CAMERA_INDEX', '0'))
-    except ValueError:
-        logging.warning("Invalid CAMERA_INDEX; using camera 0")
-        camera_index = 0
-
-    # DirectShow is Windows-only.  V4L2 is the native Linux camera backend.
-    backend = cv2.CAP_DSHOW if os.name == 'nt' else cv2.CAP_V4L2
-    cap = cv2.VideoCapture(camera_index, backend)
-    if not cap.isOpened() and backend != cv2.CAP_ANY:
-        cap.release()
-        cap = cv2.VideoCapture(camera_index, cv2.CAP_ANY)
-
-    return cap, camera_index
 
 def get_location():
     try:
@@ -77,97 +53,85 @@ def handle_options():
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
     return response
 
-def detect_human(method, contact):
-    global detection_active
+def process_frame(frame, method, contact):
+    global last_alert_at
+    global last_human_seen_at
+    global human_present
 
-    cap, camera_index = open_camera()
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    face_cascade = cv2.CascadeClassifier(
+        cv2.data.haarcascades +
+        "haarcascade_frontalface_default.xml"
+    )
 
-    if not cap.isOpened():
-        logging.error(
-            "Unable to access camera %s. On Linux, check /dev/video%s access "
-            "and try CAMERA_INDEX=1 if your webcam is on that device.",
-            camera_index,
-            camera_index,
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    faces = face_cascade.detectMultiScale(
+        gray,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=(30, 30)
+    )
+
+    now = time.monotonic()
+
+    if len(faces) > 0:
+
+        should_alert = (
+            not human_present
+            or now - last_alert_at >= ALERT_COOLDOWN_SECONDS
         )
-        with state_lock:
-            detection_active = False
-        return
 
-    last_alert_at = 0.0
-    last_human_seen_at = 0.0
-    human_present = False
-    show_camera_preview = should_show_camera_preview()
+        human_present = True
+        last_human_seen_at = now
 
-    try:
-        while detection_active:
-            ret, frame = cap.read()
-            if not ret:
-                logging.error("Unable to read a frame from the camera")
-                break
+        if should_alert:
 
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
-            now = time.monotonic()
+            logging.info("Human detected!")
 
-            if len(faces) > 0:
-                should_alert = (
-                    not human_present
-                    or now - last_alert_at >= ALERT_COOLDOWN_SECONDS
+            image_path = (
+                BACKEND_DIR /
+                "static" /
+                "intruder.jpg"
+            )
+
+            cv2.imwrite(
+                str(image_path),
+                frame
+            )
+
+            location = get_location()
+
+            if method == "Email":
+
+                send_alert_via_email(
+                    contact,
+                    location,
+                    image_path
                 )
-                human_present = True
-                last_human_seen_at = now
 
-                if should_alert:
-                    logging.info("Human detected!")
+            elif method == "Telegram":
 
-                    image_path = BACKEND_DIR / "static" / "intruder.jpg"
-                    cv2.imwrite(str(image_path), frame)
+                send_alert_via_telegram(
+                    contact,
+                    location,
+                    image_path
+                )
 
-                    location = get_location()
-                    logging.info("Detection location: %s", location)
+            last_alert_at = now
 
-                    if method == 'Email':
-                        if send_alert_via_email(contact, location, image_path):
-                            logging.info("Email alert sent successfully.")
-                        else:
-                            logging.error("Email alert could not be sent.")
-                    elif method == 'Telegram':
-                        if send_alert_via_telegram(contact, location, image_path):
-                            logging.info("Telegram alert sent successfully.")
-                        else:
-                            logging.error("Telegram alert could not be sent.")
-                    else:
-                        logging.error("Unsupported alert method: %s", method)
+        return True
 
-                    last_alert_at = time.monotonic()
-            elif human_present and now - last_human_seen_at >= DETECTION_RESET_SECONDS:
-                human_present = False
-                logging.info("Detection reset; ready for the next human.")
+    if (
+        human_present
+        and now - last_human_seen_at >= DETECTION_RESET_SECONDS
+    ):
+        human_present = False
 
-            # Many server OpenCV builds omit GUI support. Preview is opt-in so
-            # a missing HighGUI backend can never stop the detection worker.
-            if show_camera_preview:
-                try:
-                    cv2.imshow('LucidSight - Human Detection', frame)
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
-                        break
-                except cv2.error:
-                    logging.warning(
-                        "Camera preview is unavailable; continuing detection without it."
-                    )
-                    show_camera_preview = False
-    except Exception:
-        logging.exception("Detection worker failed")
-    finally:
-        cap.release()
-        if show_camera_preview:
-            try:
-                cv2.destroyAllWindows()
-            except cv2.error:
-                pass
-        with state_lock:
-            detection_active = False
+        logging.info(
+            "Detection reset; ready for next human."
+        )
+
+    return False
 
 def send_alert_via_email(contact, location, image_path):
     message = f"🚨 Alert: Human detected at {location} on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -192,8 +156,24 @@ def send_alert_via_email(contact, location, image_path):
         return False
     password = ''.join(password.split())
 
+    smtp_host = os.getenv('SMTP_HOST', 'smtp.gmail.com').strip()
+    smtp_port = int(os.getenv('SMTP_PORT', '587'))
+    smtp_timeout = int(os.getenv('SMTP_TIMEOUT', '12'))
+
     try:
-        with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as server:
+        probe = socket.create_connection((smtp_host, smtp_port), smtp_timeout)
+        probe.close()
+    except OSError as exc:
+        logging.error(
+            "SMTP is unreachable at %s:%s (%s). Outbound SMTP appears blocked on this network.",
+            smtp_host,
+            smtp_port,
+            exc,
+        )
+        return False
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
             server.starttls()
             server.login(sender, password)
             server.sendmail(msg['From'], msg['To'], msg.as_string())
@@ -258,11 +238,15 @@ def send_alert_via_telegram(chat_id, location, image_path):
 
 @app.route('/')
 def home():
-    return render_template('index.html')
+    return jsonify({
+        "status": "ok",
+        "service": "LucidSight Backend"
+    })
 
 @app.route('/start_detection', methods=['POST'])
 def start_detection():
-    global detection_active, detection_thread
+    global detection_active, detection_method, detection_contact
+    global last_alert_at, last_human_seen_at, human_present
     method = request.form.get('method', '').strip()
     contact = request.form.get('contact', '').strip()
 
@@ -279,27 +263,86 @@ def start_detection():
     with state_lock:
         if detection_active:
             return jsonify({"error": "Detection is already active"}), 409
-        if detection_thread is not None and detection_thread.is_alive():
-            return jsonify({
-                "error": "Previous detection is still stopping. Please wait a moment and try again."
-            }), 409
         detection_active = True
-
-        detection_thread = threading.Thread(
-            target=detect_human,
-            args=(method, contact),
-            daemon=True,
-        )
-    detection_thread.start()
+        detection_method = method
+        detection_contact = contact
+        last_alert_at = 0.0
+        last_human_seen_at = 0.0
+        human_present = False
 
     return jsonify({"status": "Detection Started"})
 
 @app.route('/stop_detection', methods=['POST'])
 def stop_detection():
-    global detection_active
+    global detection_active, detection_method, detection_contact
     with state_lock:
         detection_active = False
+        detection_method = None
+        detection_contact = None
     return jsonify({"status": "Detection Stopped"})
 
+@app.route("/process_frame", methods=["POST"])
+def process_frame_route():
+
+    with state_lock:
+
+        if not detection_active:
+            return jsonify({
+                "error": "Detection is not active"
+            }), 400
+
+        method = detection_method
+        contact = detection_contact
+
+    if "frame" not in request.files:
+        return jsonify({
+            "error": "No frame received"
+        }), 400
+
+    try:
+
+        import numpy as np
+
+        image_bytes = request.files["frame"].read()
+
+        image_array = np.frombuffer(
+            image_bytes,
+            dtype=np.uint8
+        )
+
+        frame = cv2.imdecode(
+            image_array,
+            cv2.IMREAD_COLOR
+        )
+
+        if frame is None:
+            return jsonify({
+                "error": "Invalid image"
+            }), 400
+
+        detected = process_frame(
+            frame,
+            method,
+            contact
+        )
+
+        return jsonify({
+            "detected": detected
+        })
+
+    except Exception:
+
+        logging.exception(
+            "Frame processing failed"
+        )
+
+        return jsonify({
+            "error": "Frame processing failed"
+        }), 500
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(
+        host='0.0.0.0',
+        port=5000,
+        debug=False
+    )
