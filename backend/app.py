@@ -243,6 +243,10 @@ def home():
         "service": "LucidSight Backend"
     })
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    return {"status":"Healthy"}, 200
+
 @app.route('/start_detection', methods=['POST'])
 def start_detection():
     global detection_active, detection_method, detection_contact

@@ -37,6 +37,11 @@ pipeline{
             sh 'docker compose ps'
             }
         }
+        stage('verify backend'){
+            steps{
+                sh 'curl -f http://localhost:5000/health'
+            }
+        }
         
     }
 
