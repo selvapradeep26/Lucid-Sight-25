@@ -39,7 +39,10 @@ pipeline{
         }
         stage('verify backend'){
             steps{
-                sh 'curl --fail --retry 5 --retry-delay 2 http://localhost:5000/api/health'
+                sh'''
+                    ehco "checking backend health points"
+                    sh 'curl --fail --retry 5 --retry-delay 2 http://localhost:5000/api/health'
+                '''
             }
         }
         
