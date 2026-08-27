@@ -1,6 +1,12 @@
 pipeline{
     agent any
 
+    environment{
+        EMAIL_FROM = credentials('email-user')
+        EMAILPWD = credentials('email-password')
+
+    }
+
     stages{
         stage('Checkout'){
             steps{
