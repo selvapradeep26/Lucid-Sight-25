@@ -17,6 +17,9 @@ services:
 
 
     frontend:
+    
+        image: lucidsight-frontend:${BUILD-NUMBER:latest}
+
         build:
           context: .
 
