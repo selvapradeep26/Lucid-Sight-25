@@ -1,6 +1,7 @@
 services:
 
     backend:
+        image: lucidsight-backend:${BUILD_NUMBER:-latest}
         build:
           context: ./backend
 
@@ -18,7 +19,7 @@ services:
 
     frontend:
 
-        image: lucidsight-frontend:${BUILD_NUMBER:latest}
+        image: lucidsight-frontend:${BUILD_NUMBER:-latest}
 
         build:
           context: .
