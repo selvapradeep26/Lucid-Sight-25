@@ -1,6 +1,12 @@
 pipeline {
     agent any
 
+    environment {
+        EMAILUSER = credentials('email-user')
+        EMAILPWD  = credentials('email-password')
+    }
+
+
     stages {
         stage('Deploy to EC2') {
             steps {
