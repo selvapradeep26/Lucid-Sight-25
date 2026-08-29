@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        EMAILUSER = credentials('email-user')
+        EMAIL_FROM = credentials('email-user')
         EMAILPWD  = credentials('email-password')
     }
 
