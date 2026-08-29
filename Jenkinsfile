@@ -1,33 +1,39 @@
 pipeline {
     agent any
 
-    environment {
-        EMAIL_FROM = credentials('email-from')
-        EMAILPWD   = credentials('email-password')
-    }
-
     stages {
-        stage('Test EC2 SSH') {
+        stage('Deploy to EC2') {
             steps {
                 sshagent(['ec2-ssh']) {
                     sh '''
-                        ssh -o StrictHostKeyChecking=no \
-                            ec2-user@13.48.58.241 \
-                            "echo EC2 SSH connection successful && hostname"
+                        ssh -o StrictHostKeyChecking=no ec2-user@13.48.58.241 << 'EOF'
 
-                            cd /home/ec2-user/Lucid-Sight-25
+                        echo "===== Connected to EC2 ====="
+                        hostname
 
-                            git pull origin main 
+                        echo "===== Go to project ====="
+                        cd /home/ec2-user/Lucid-Sight-25
 
-                            docker compose build
+                        echo "===== Pull latest code ====="
+                        git pull origin main
 
-                            docker compose down
+                        echo "===== Build Docker images ====="
+                        docker compose build
 
-                            docker compose up -d
+                        echo "===== Stop existing containers ====="
+                        docker compose down
 
-                            docker compose ps
+                        echo "===== Start application ====="
+                        docker compose up -d
 
-                            curl --fail http://localhost:5000/api/health
+                        echo "===== Verify containers ====="
+                        docker compose ps
+
+                        echo "===== Verify backend ====="
+                        curl --fail --retry 5 --retry-delay 2 \
+                            http://localhost:5000/api/health
+
+                        EOF
                     '''
                 }
             }
@@ -41,10 +47,6 @@ pipeline {
 
         failure {
             echo 'LucidSight Deployment failed'
-        }
-
-        always {
-            sh 'docker compose logs --tail=50 || true'
         }
     }
 }
