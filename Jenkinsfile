@@ -15,7 +15,7 @@ pipeline {
                             ec2-user@13.48.58.241 \
                             "echo EC2 SSH connection successful && hostname"
 
-                            cd ~/Lucid-Sight-25
+                            cd /home/ec2-user/Lucid-Sight-25
 
                             git pull origin main 
 
