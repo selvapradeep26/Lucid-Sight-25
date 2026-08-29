@@ -6,7 +6,8 @@ pipeline {
         EMAILPWD   = credentials('email-password')
     }
 
-        stage('Deploy with EC2') {
+    stages {
+        stage('Test EC2 SSH') {
             steps {
                 sshagent(['ec2-ssh']) {
                     sh '''
