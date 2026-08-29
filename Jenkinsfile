@@ -26,7 +26,7 @@ pipeline {
                 sshagent(['ec2-ssh']) {
                     sh '''
                         ssh -o StrictHostKeyChecking=no \
-                            ec2-user@16.171.21.197 \
+                            ec2-user@13.48.58.241 \
                             "echo EC2 SSH connection successful && hostname"
                     '''
                 }
