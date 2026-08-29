@@ -6,63 +6,32 @@ pipeline {
         EMAILPWD   = credentials('email-password')
     }
 
-    stages {
-
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-
-        stage('Test Docker') {
-            steps {
-                sh 'echo "DOCKER_HOST=$DOCKER_HOST"'
-                sh 'docker info'
-            }
-        }
-
-        stage('Test EC2 SSH') {
+        stage('Deploy with EC2') {
             steps {
                 sshagent(['ec2-ssh']) {
                     sh '''
                         ssh -o StrictHostKeyChecking=no \
                             ec2-user@13.48.58.241 \
                             "echo EC2 SSH connection successful && hostname"
+
+                            cd ~/Lucid-Sight-25
+
+                            git pull origin main 
+
+                            docker compose build
+
+                            docker compose down
+
+                            docker compose up -d
+
+                            docker compose ps
+
+                            curl --fail http://localhost:5000/api/health
                     '''
                 }
             }
         }
 
-        stage('Build Docker images') {
-            steps {
-                sh 'docker compose build'
-            }
-        }
-
-        stage('Stop Existing Containers') {
-            steps {
-                sh 'docker compose down'
-            }
-        }
-
-        stage('Start app') {
-            steps {
-                sh 'docker compose up -d'
-            }
-        }
-
-        stage('Verify container') {
-            steps {
-                sh 'docker compose ps'
-            }
-        }
-
-        stage('Verify backend') {
-            steps {
-                sh 'curl --fail --retry 5 --retry-delay 2 http://localhost:5000/api/health'
-            }
-        }
-    }
 
     post {
         success {
