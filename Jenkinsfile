@@ -33,7 +33,6 @@ pipeline {
                         curl --fail --retry 5 --retry-delay 2 \
                             http://localhost:5000/api/health
 
-                        EOF
                     '''
                 }
             }
