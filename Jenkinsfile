@@ -1,11 +1,6 @@
 pipeline {
     agent any
 
-    environment {
-        EMAIL_FROM = credentials('email-from')
-        EMAILPWD   = credentials('email-password')
-    }
-
     stages {
 
         stage('Deploy to EC2') {
@@ -14,72 +9,47 @@ pipeline {
                 sshagent(['ec2-ssh1']) {
 
                     sh '''
-                        ssh -o StrictHostKeyChecking=no ec2-user@184.192.255.135<< 'EOF'
+                        ssh \
+                            -o StrictHostKeyChecking=no \
+                            -o BatchMode=yes \
+                            -o ConnectTimeout=15 \
+                            ec2-user@184.192.255.135 \
+                            "
+                            set -e
 
-                        set -e
+                            echo '===== Connected to EC2 ====='
+                            hostname
+                            whoami
 
-                        echo "======================================"
-                        echo "       Connected to EC2"
-                        echo "======================================"
+                            echo '===== Go to project ====='
+                            cd /home/ec2-user/Lucid-Sight-25
 
-                        hostname
+                            echo '===== Pull latest code ====='
+                            git fetch origin
+                            git reset --hard origin/main
 
-                        echo "======================================"
-                        echo "       Go to project"
-                        echo "======================================"
+                            echo '===== Docker versions ====='
+                            docker --version
+                            docker compose version
+                            docker buildx version
 
-                        cd /home/ec2-user/Lucid-Sight-25
+                            echo '===== Stop existing containers ====='
+                            docker compose down || true
 
-                        echo "======================================"
-                        echo "       Pull latest code"
-                        echo "======================================"
+                            echo '===== Build Docker images ====='
+                            docker compose build
 
-                        git fetch origin
-                        git reset --hard origin/main
+                            echo '===== Start application ====='
+                            docker compose up -d
 
-                        echo "======================================"
-                        echo "       Docker Compose check"
-                        echo "======================================"
+                            echo '===== Verify containers ====='
+                            docker compose ps
 
-                        docker compose version
+                            echo '===== Verify backend ====='
+                            curl --fail --retry 5 --retry-delay 2 http://localhost:5000/api/health
 
-                        echo "======================================"
-                        echo "       Stop existing containers"
-                        echo "======================================"
-
-                        docker compose down
-
-                        echo "======================================"
-                        echo "       Build Docker images"
-                        echo "======================================"
-
-                        docker compose build
-
-                        echo "======================================"
-                        echo "       Start application"
-                        echo "======================================"
-
-                        docker compose up -d
-
-                        echo "======================================"
-                        echo "       Container status"
-                        echo "======================================"
-
-                        docker compose ps
-
-                        echo "======================================"
-                        echo "       Backend health check"
-                        echo "======================================"
-
-                        curl --fail --retry 5 --retry-delay 2 \
-                            http://localhost:5000/api/health
-
-                        echo ""
-                        echo "======================================"
-                        echo "       DEPLOYMENT SUCCESSFUL"
-                        echo "======================================"
-
-                        EOF
+                            echo '===== DEPLOYMENT SUCCESSFUL ====='
+                            "
                     '''
                 }
             }
@@ -87,7 +57,6 @@ pipeline {
     }
 
     post {
-
         success {
             echo 'LucidSight deployed successfully to EC2'
         }
