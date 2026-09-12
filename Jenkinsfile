@@ -11,10 +11,10 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
 
-                sshagent(['ec2-ssh']) {
+                sshagent(['ec2-ssh1']) {
 
                     sh '''
-                        ssh -o ec2-ssh1 ec2-user@184.192.255.135<< 'EOF'
+                        ssh -o StrictHostKeyChecking=no ec2-user@184.192.255.135<< 'EOF'
 
                         set -e
 
