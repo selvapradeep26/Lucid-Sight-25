@@ -14,7 +14,7 @@ pipeline {
                 sshagent(['ec2-ssh']) {
 
                     sh '''
-                        ssh -o StrictHostKeyChecking=no ec2-user@184.192.255.135<< 'EOF'
+                        ssh -o Phase2.pem ec2-user@184.192.255.135<< 'EOF'
 
                         set -e
 
