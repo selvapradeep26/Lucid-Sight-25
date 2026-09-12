@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: lucidsight
+
+spec:
+  replicas: {{.Values.backend.replicaCount}}
+  selector:
+    matchLabels:
+      app: backend
+
+  template:
+    metadata:
+      labels:
+        app: backend
+
+
+    spec:
+      containers:
+        - name: backend
+          image: "{{.Values.backend.image.repository}}:{{.Values.backend.image.tag}}"
+          imagePullPolicy: {{.Values.backend.image.pullPolicy}}
+          ports:
+            - containerPort: 5000
+
+          volumeMounts:
+            - name: lucidsight-storage
+              mountPath: /app/data
+
+          envFrom:
+            - configMapRef:
+                name: lucidsight-config
+
+
+            - secretRef:
+                name: lucidsight-secret
+
+
+
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          resources:
+            requests:
+              cpu: {{.Values.backend.resources.requests.cpu}}
+              memory: {{.Values.backend.resources.requests.memory}}
+
+            limits:
+              cpu: {{.Values.backend.resources.limits.cpu}}
+              memory: {{.Values.backend.resources.limits.memory}}
+
+
+
+      volumes:
+        - name: lucidsight-storage
+          persistentVolumeClaim:
+            claimName: lucidsight-pvc        

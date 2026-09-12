@@ -1,0 +1,40 @@
+backend:
+  replicaCount: 3
+
+  image:
+    repository: lucidsight-backend
+    tag: latest
+    pullPolicy: Never
+
+  service:
+    port: 5000
+    targetPort: 5000
+    type: ClusterIP
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+
+frontend:
+  replicaCount: 1
+
+  image:
+    repository: lucidsight-frontend
+    tag: latest
+    pullPolicy: Never
+
+  service:
+    port: 80
+    targetPort: 80
+    type: ClusterIP
+
+
+config:
+  appEnv: "development"
+  appName: "LucidSight"
