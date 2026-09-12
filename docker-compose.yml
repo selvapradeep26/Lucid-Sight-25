@@ -1,35 +1,40 @@
 services:
 
-    backend:
-        image: lucidsight-backend:${BUILD_NUMBER:-latest}
-        build:
-          context: ./backend
+  backend:
+    image: lucidsight-backend:${BUILD_NUMBER:-latest}
 
-        container_name: lucidsight-backend
-        ports:
-          - "5000:5000"
+    build:
+      context: ./backend
 
-        environment:
-          EMAILUSER: ${EMAILUSER}
-          EMAILPWD: ${EMAILPWD}
+    container_name: lucidsight-backend
 
-        restart: unless-stopped
+    ports:
+      - "5000:5000"
+
+    environment:
+      EMAILUSER: ${EMAILUSER}
+      EMAILPWD: ${EMAILPWD}
+
+    networks:
+      default:
+        aliases:
+          - backend-service
+
+    restart: unless-stopped
 
 
+  frontend:
+    image: lucidsight-frontend:${BUILD_NUMBER:-latest}
 
-    frontend:
+    build:
+      context: .
 
-        image: lucidsight-frontend:${BUILD_NUMBER:-latest}
+    container_name: lucidsight-frontend
 
-        build:
-          context: .
+    ports:
+      - "8000:80"
 
-        container_name: lucidsight-frontend
-        ports:
-          - "8000:80"
+    depends_on:
+      - backend
 
-        depends_on:
-          - backend
-
-        restart: unless-stopped
-
+    restart: unless-stopped
