@@ -23,6 +23,7 @@ pipeline {
                         echo "===== Checking ECR ====="
 
                         aws ecr describe-repositories \
+                            --region us-east-1 \
                             --repository-names lucidsight-backend lucidsight-frontend
 
                         echo "===== AWS ECR CONNECTION SUCCESSFUL ====="
