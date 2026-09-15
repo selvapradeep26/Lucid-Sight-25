@@ -11,52 +11,77 @@ pipeline {
                     string(credentialsId: 'email-password', variable: 'EMAILPWD')
                 ]) {
 
-                sshagent(['ec2-ssh1']) {
+                    sshagent(['ec2-ssh1']) {
 
-                    sh '''
-                        ssh \
-                            -o StrictHostKeyChecking=no \
-                            -o BatchMode=yes \
-                            -o ConnectTimeout=15 \
-                            ec2-user@44.198.227.101 \
-                            "
-                            set -e
+                        sh '''
+                            set +x
 
-                            echo '===== Connected to EC2 ====='
-                            hostname
-                            whoami
+                            ENV_FILE=$(mktemp)
+                            chmod 600 "$ENV_FILE"
 
-                            echo '===== Go to project ====='
-                            cd /home/ec2-user/Lucid-Sight-25
+                            trap 'rm -f "$ENV_FILE"' EXIT
 
-                            echo '===== Pull latest code ====='
-                            git fetch origin
-                            git reset --hard origin/main
+                            printf '%s\\n' \
+                                "EMAILUSER=$EMAILUSER" \
+                                "EMAILPWD=$EMAILPWD" \
+                                > "$ENV_FILE"
 
-                            echo '===== Docker versions ====='
-                            docker --version
-                            docker compose version
-                            docker buildx version
+                            echo "===== Copy .env to EC2 ====="
 
-                            echo '===== Stop existing containers ====='
-                            docker compose down || true
+                            scp \
+                                -o StrictHostKeyChecking=no \
+                                -o BatchMode=yes \
+                                "$ENV_FILE" \
+                                ec2-user@44.198.227.101:/home/ec2-user/Lucid-Sight-25/.env
 
-                            echo '===== Build Docker images ====='
-                            docker compose build
+                            echo "===== Deploy to EC2 ====="
 
-                            echo '===== Start application ====='
-                            docker compose up -d
+                            ssh \
+                                -o StrictHostKeyChecking=no \
+                                -o BatchMode=yes \
+                                -o ConnectTimeout=15 \
+                                ec2-user@44.198.227.101 \
+                                "
+                                set -e
 
-                            echo '===== Verify containers ====='
-                            docker compose ps
+                                echo '===== Connected to EC2 ====='
+                                hostname
+                                whoami
 
-                            echo '===== Verify backend ====='
-                            curl --fail --retry 5 --retry-delay 2 http://localhost:5000/api/health
+                                cd /home/ec2-user/Lucid-Sight-25
 
-                            echo '===== DEPLOYMENT SUCCESSFUL ====='
-                            "
-                    '''
-                }
+                                echo '===== Secure .env ====='
+                                chmod 600 .env
+
+                                echo '===== Pull latest code ====='
+                                git fetch origin
+                                git reset --hard origin/main
+
+                                echo '===== Docker versions ====='
+                                docker --version
+                                docker compose version
+                                docker buildx version
+
+                                echo '===== Stop existing containers ====='
+                                docker compose down || true
+
+                                echo '===== Build Docker images ====='
+                                docker compose build
+
+                                echo '===== Start application ====='
+                                docker compose up -d
+
+                                echo '===== Verify containers ====='
+                                docker compose ps
+
+                                echo '===== Verify backend ====='
+                                curl --fail --retry 5 --retry-delay 2 \
+                                    http://localhost:5000/api/health
+
+                                echo '===== DEPLOYMENT SUCCESSFUL ====='
+                                "
+                        '''
+                    }
                 }
             }
         }
