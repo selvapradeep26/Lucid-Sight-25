@@ -169,14 +169,24 @@ pipeline {
                                 docker buildx version
 
 
+                                echo '===== Login to Amazon ECR ====='
+
+                                aws ecr get-login-password \
+                                    --region us-east-1 \
+                                    | docker login \
+                                    --username AWS \
+                                    --password-stdin \
+                                    065194293194.dkr.ecr.us-east-1.amazonaws.com
+
+
                                 echo '===== Stop existing containers ====='
 
                                 docker compose down || true
 
 
-                                echo '===== Build Docker images ====='
+                                echo '===== Pull images from ECR ====='
 
-                                docker compose build
+                                docker compose pull
 
 
                                 echo '===== Start application ====='

@@ -1,10 +1,7 @@
 services:
 
   backend:
-    image: lucidsight-backend:${BUILD_NUMBER:-latest}
-
-    build:
-      context: ./backend
+    image: 065194293194.dkr.ecr.us-east-1.amazonaws.com/lucidsight-backend:latest
 
     container_name: lucidsight-backend
 
@@ -24,10 +21,7 @@ services:
 
 
   frontend:
-    image: lucidsight-frontend:${BUILD_NUMBER:-latest}
-
-    build:
-      context: .
+    image: 065194293194.dkr.ecr.us-east-1.amazonaws.com/lucidsight-frontend:latest
 
     container_name: lucidsight-frontend
 
