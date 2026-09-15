@@ -6,6 +6,11 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
 
+                withCredentials([
+                    string(credentialsId: 'email-from', variable: 'EMAILUSER'),
+                    string(credentialsId: 'email-password', variable: 'EMAILPWD')
+                ]) {
+
                 sshagent(['ec2-ssh1']) {
 
                     sh '''
