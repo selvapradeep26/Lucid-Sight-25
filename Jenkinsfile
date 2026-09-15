@@ -3,6 +3,34 @@ pipeline {
 
     stages {
 
+         stage('Test AWS Connection') {
+            steps {
+
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'aws-ecr']
+                ]) {
+
+                    sh '''
+                        echo "===== Testing AWS CLI ====="
+
+                        aws --version
+
+                        echo "===== Checking AWS Identity ====="
+
+                        aws sts get-caller-identity
+
+                        echo "===== Checking ECR ====="
+
+                        aws ecr describe-repositories \
+                            --repository-names lucidsight-backend lucidsight-frontend
+
+                        echo "===== AWS ECR CONNECTION SUCCESSFUL ====="
+                    '''
+                }
+            }
+        }
+
         stage('Deploy to EC2') {
             steps {
 
