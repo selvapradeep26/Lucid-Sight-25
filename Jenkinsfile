@@ -13,7 +13,7 @@ pipeline {
                             -o StrictHostKeyChecking=no \
                             -o BatchMode=yes \
                             -o ConnectTimeout=15 \
-                            ec2-user@184.192.255.135 \
+                            ec2-user@44.198.227.101 \
                             "
                             set -e
 
