@@ -3,34 +3,52 @@ pipeline {
 
     stages {
 
-         stage('Test AWS Connection') {
-            steps {
+         stage('Build and Push Backend to ECR') {
 
-                withCredentials([
-                    [$class: 'AmazonWebServicesCredentialsBinding',
-                     credentialsId: 'AWS-ECR']
-                ]) {
+    steps {
 
-                    sh '''
-                        echo "===== Testing AWS CLI ====="
+        // Get AWS credentials from Jenkins
+        withCredentials([
+            [$class: 'AmazonWebServicesCredentialsBinding',
+             credentialsId: 'AWS-ECR']
+        ]) {
 
-                        aws --version
+            sh '''
+                echo "===== Login to Amazon ECR ====="
 
-                        echo "===== Checking AWS Identity ====="
+                aws ecr get-login-password \
+                    --region us-east-1 \
+                    | docker login \
+                    --username AWS \
+                    --password-stdin \
+                    065194293194.dkr.ecr.us-east-1.amazonaws.com
 
-                        aws sts get-caller-identity
 
-                        echo "===== Checking ECR ====="
+                echo "===== Build Backend Docker Image ====="
 
-                        aws ecr describe-repositories \
-                            --region us-east-1 \
-                            --repository-names lucidsight-backend lucidsight-frontend
+                docker build \
+                    -t lucidsight-backend \
+                    ./backend
 
-                        echo "===== AWS ECR CONNECTION SUCCESSFUL ====="
-                    '''
-                }
-            }
+
+                echo "===== Tag Backend Image ====="
+
+                docker tag \
+                    lucidsight-backend \
+                    065194293194.dkr.ecr.us-east-1.amazonaws.com/lucidsight-backend:latest
+
+
+                echo "===== Push Backend Image to ECR ====="
+
+                docker push \
+                    065194293194.dkr.ecr.us-east-1.amazonaws.com/lucidsight-backend:latest
+
+
+                echo "===== Backend Image Successfully Pushed ====="
+            '''
         }
+    }
+}
 
         stage('Deploy to EC2') {
             steps {
