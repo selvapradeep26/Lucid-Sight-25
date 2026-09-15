@@ -3,54 +3,102 @@ pipeline {
 
     stages {
 
-         stage('Build and Push Backend to ECR') {
+        stage('Build and Push Backend to ECR') {
 
-    steps {
+            steps {
 
-        // Get AWS credentials from Jenkins
-        withCredentials([
-            [$class: 'AmazonWebServicesCredentialsBinding',
-             credentialsId: 'AWS-ECR']
-        ]) {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'AWS-ECR']
+                ]) {
 
-            sh '''
-                echo "===== Login to Amazon ECR ====="
+                    sh '''
+                        echo "===== Login to Amazon ECR ====="
 
-                aws ecr get-login-password \
-                    --region us-east-1 \
-                    | docker login \
-                    --username AWS \
-                    --password-stdin \
-                    065194293194.dkr.ecr.us-east-1.amazonaws.com
-
-
-                echo "===== Build Backend Docker Image ====="
-
-                docker build \
-                    -t lucidsight-backend \
-                    ./backend
+                        aws ecr get-login-password \
+                            --region us-east-1 \
+                            | docker login \
+                            --username AWS \
+                            --password-stdin \
+                            065194293194.dkr.ecr.us-east-1.amazonaws.com
 
 
-                echo "===== Tag Backend Image ====="
+                        echo "===== Build Backend Docker Image ====="
 
-                docker tag \
-                    lucidsight-backend \
-                    065194293194.dkr.ecr.us-east-1.amazonaws.com/lucidsight-backend:latest
-
-
-                echo "===== Push Backend Image to ECR ====="
-
-                docker push \
-                    065194293194.dkr.ecr.us-east-1.amazonaws.com/lucidsight-backend:latest
+                        docker build \
+                            -t lucidsight-backend \
+                            ./backend
 
 
-                echo "===== Backend Image Successfully Pushed ====="
-            '''
+                        echo "===== Tag Backend Image ====="
+
+                        docker tag \
+                            lucidsight-backend \
+                            065194293194.dkr.ecr.us-east-1.amazonaws.com/lucidsight-backend:latest
+
+
+                        echo "===== Push Backend Image to ECR ====="
+
+                        docker push \
+                            065194293194.dkr.ecr.us-east-1.amazonaws.com/lucidsight-backend:latest
+
+
+                        echo "===== Backend Image Successfully Pushed ====="
+                    '''
+                }
+            }
         }
-    }
-}
+
+
+        stage('Build and Push Frontend to ECR') {
+
+            steps {
+
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'AWS-ECR']
+                ]) {
+
+                    sh '''
+                        echo "===== Login to Amazon ECR ====="
+
+                        aws ecr get-login-password \
+                            --region us-east-1 \
+                            | docker login \
+                            --username AWS \
+                            --password-stdin \
+                            065194293194.dkr.ecr.us-east-1.amazonaws.com
+
+
+                        echo "===== Build Frontend Docker Image ====="
+
+                        docker build \
+                            -t lucidsight-frontend \
+                            .
+
+
+                        echo "===== Tag Frontend Image ====="
+
+                        docker tag \
+                            lucidsight-frontend \
+                            065194293194.dkr.ecr.us-east-1.amazonaws.com/lucidsight-frontend:latest
+
+
+                        echo "===== Push Frontend Image to ECR ====="
+
+                        docker push \
+                            065194293194.dkr.ecr.us-east-1.amazonaws.com/lucidsight-frontend:latest
+
+
+                        echo "===== Frontend Image Successfully Pushed ====="
+                    '''
+                }
+            }
+        }
+
 
         stage('Deploy to EC2') {
+
             steps {
 
                 withCredentials([
@@ -68,10 +116,12 @@ pipeline {
 
                             trap 'rm -f "$ENV_FILE"' EXIT
 
+
                             printf '%s\\n' \
                                 "EMAILUSER=$EMAILUSER" \
                                 "EMAILPWD=$EMAILPWD" \
                                 > "$ENV_FILE"
+
 
                             echo "===== Copy .env to EC2 ====="
 
@@ -80,6 +130,7 @@ pipeline {
                                 -o BatchMode=yes \
                                 "$ENV_FILE" \
                                 ec2-user@44.198.227.101:/home/ec2-user/Lucid-Sight-25/.env
+
 
                             echo "===== Deploy to EC2 ====="
 
@@ -92,38 +143,57 @@ pipeline {
                                 set -e
 
                                 echo '===== Connected to EC2 ====='
+
                                 hostname
                                 whoami
 
+
                                 cd /home/ec2-user/Lucid-Sight-25
 
+
                                 echo '===== Secure .env ====='
+
                                 chmod 600 .env
 
+
                                 echo '===== Pull latest code ====='
+
                                 git fetch origin
                                 git reset --hard origin/main
 
+
                                 echo '===== Docker versions ====='
+
                                 docker --version
                                 docker compose version
                                 docker buildx version
 
+
                                 echo '===== Stop existing containers ====='
+
                                 docker compose down || true
 
+
                                 echo '===== Build Docker images ====='
+
                                 docker compose build
 
+
                                 echo '===== Start application ====='
+
                                 docker compose up -d
 
+
                                 echo '===== Verify containers ====='
+
                                 docker compose ps
 
+
                                 echo '===== Verify backend ====='
+
                                 curl --fail --retry 5 --retry-delay 2 \
                                     http://localhost:5000/api/health
+
 
                                 echo '===== DEPLOYMENT SUCCESSFUL ====='
                                 "
@@ -134,7 +204,9 @@ pipeline {
         }
     }
 
+
     post {
+
         success {
             echo 'LucidSight deployed successfully to EC2'
         }
