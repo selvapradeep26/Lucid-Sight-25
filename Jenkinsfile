@@ -1,6 +1,13 @@
 pipeline {
     agent any
 
+    environment {
+        AWS_REGION = 'us-east-1'
+        ECR_REGISTRY = '065194293194.dkr.ecr.us-east-1.amazonaws.com'
+        BACKEND_REPO = 'lucidsight-backend'
+        FRONTEND_REPO = 'lucidsight-frontend'
+    }
+
     stages {
 
         stage('Build and Push Backend to ECR') {
@@ -16,34 +23,37 @@ pipeline {
                         echo "===== Login to Amazon ECR ====="
 
                         aws ecr get-login-password \
-                            --region us-east-1 \
+                            --region $AWS_REGION \
                             | docker login \
                             --username AWS \
                             --password-stdin \
-                            065194293194.dkr.ecr.us-east-1.amazonaws.com
+                            $ECR_REGISTRY
 
 
                         echo "===== Build Backend Docker Image ====="
 
                         docker build \
-                            -t lucidsight-backend \
+                            -t $BACKEND_REPO:$BUILD_NUMBER \
                             ./backend
 
 
                         echo "===== Tag Backend Image ====="
 
                         docker tag \
-                            lucidsight-backend \
-                            065194293194.dkr.ecr.us-east-1.amazonaws.com/lucidsight-backend:latest
+                            $BACKEND_REPO:$BUILD_NUMBER \
+                            $ECR_REGISTRY/$BACKEND_REPO:$BUILD_NUMBER
 
 
                         echo "===== Push Backend Image to ECR ====="
 
                         docker push \
-                            065194293194.dkr.ecr.us-east-1.amazonaws.com/lucidsight-backend:latest
+                            $ECR_REGISTRY/$BACKEND_REPO:$BUILD_NUMBER
 
 
                         echo "===== Backend Image Successfully Pushed ====="
+
+                        echo "Backend image:"
+                        echo "$ECR_REGISTRY/$BACKEND_REPO:$BUILD_NUMBER"
                     '''
                 }
             }
@@ -63,34 +73,37 @@ pipeline {
                         echo "===== Login to Amazon ECR ====="
 
                         aws ecr get-login-password \
-                            --region us-east-1 \
+                            --region $AWS_REGION \
                             | docker login \
                             --username AWS \
                             --password-stdin \
-                            065194293194.dkr.ecr.us-east-1.amazonaws.com
+                            $ECR_REGISTRY
 
 
                         echo "===== Build Frontend Docker Image ====="
 
                         docker build \
-                            -t lucidsight-frontend \
+                            -t $FRONTEND_REPO:$BUILD_NUMBER \
                             .
 
 
                         echo "===== Tag Frontend Image ====="
 
                         docker tag \
-                            lucidsight-frontend \
-                            065194293194.dkr.ecr.us-east-1.amazonaws.com/lucidsight-frontend:latest
+                            $FRONTEND_REPO:$BUILD_NUMBER \
+                            $ECR_REGISTRY/$FRONTEND_REPO:$BUILD_NUMBER
 
 
                         echo "===== Push Frontend Image to ECR ====="
 
                         docker push \
-                            065194293194.dkr.ecr.us-east-1.amazonaws.com/lucidsight-frontend:latest
+                            $ECR_REGISTRY/$FRONTEND_REPO:$BUILD_NUMBER
 
 
                         echo "===== Frontend Image Successfully Pushed ====="
+
+                        echo "Frontend image:"
+                        echo "$ECR_REGISTRY/$FRONTEND_REPO:$BUILD_NUMBER"
                     '''
                 }
             }
@@ -141,6 +154,8 @@ pipeline {
                                 ec2-user@44.198.227.101 \
                                 "
                                 set -e
+
+                                export IMAGE_TAG=${BUILD_NUMBER}
 
                                 echo '===== Connected to EC2 ====='
 
